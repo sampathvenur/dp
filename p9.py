@@ -1,47 +1,33 @@
 # Program 9: Implement a restricted boltzmann machine (RBM) for learning binary data representations.
 
-import tensorflow as tf
-import matplotlib.pyplot as plt
+import tensorflow as tf, matplotlib.pyplot as plt
 
-# 1. Data (Load, Reshape, Binarize in one go)
+# 1. Data
 (x, _), _ = tf.keras.datasets.mnist.load_data()
-x = (x.reshape(-1, 784) / 255.0 > 0.5).astype('float32')
-ds = tf.data.Dataset.from_tensor_slices(x).batch(64)
+x = (x.reshape(-1, 784) / 255 > 0.5).astype('float32')
 
-# 2. RBM Class
-class RBM(tf.Module):
-    def __init__(self):
-        self.W = tf.Variable(tf.random.normal([784, 128], stddev=0.01))
-        self.hb = tf.Variable(tf.zeros([128]))
-        self.vb = tf.Variable(tf.zeros([784]))
+# 2. Variables
+W = tf.Variable(tf.random.normal([784, 128], 0.01))
+hb, vb = tf.Variable(tf.zeros([128])), tf.Variable(tf.zeros([784]))
 
-    def train(self, v):
-        # Forward Pass (Positive Phase)
-        ph0 = tf.nn.sigmoid(v @ self.W + self.hb)
-        h0 = tf.cast(tf.random.uniform(ph0.shape) < ph0, tf.float32) # Bernoulli Sample
-        
-        # Backward Pass (Reconstruction / Negative Phase)
-        pv1 = tf.nn.sigmoid(h0 @ tf.transpose(self.W) + self.vb)
-        v1 = tf.cast(tf.random.uniform(pv1.shape) < pv1, tf.float32)
-        ph1 = tf.nn.sigmoid(v1 @ self.W + self.hb)
-        
-        # Update Weights (Contrastive Divergence)
-        self.W.assign_add(0.05 * (tf.transpose(v) @ ph0 - tf.transpose(v1) @ ph1) / 64)
-        self.vb.assign_add(0.05 * tf.reduce_mean(v - v1, axis=0))
-        self.hb.assign_add(0.05 * tf.reduce_mean(ph0 - ph1, axis=0))
-        
-        return tf.reduce_mean(tf.square(v - v1)) # MSE Loss
+# 3. Train
+errors = []
+for i in range(5):
+    for j in range(0, 60000, 64):
+        v0 = x[j : j+64]
+        h0 = tf.sigmoid(v0 @ W + hb)
+        h0_s = tf.cast(tf.random.uniform([len(v0), 128]) < h0, tf.float32)
+        v1 = tf.sigmoid(h0_s @ tf.transpose(W) + vb)
+        h1 = tf.sigmoid(v1 @ W + hb)
 
-# 3. Train Loop
-rbm = RBM()
-losses = []
-for epoch in range(5):
-    loss = [rbm.train(batch) for batch in ds] # Train whole dataset
-    avg = sum(loss) / len(loss)
-    losses.append(avg)
-    print(f"Epoch {epoch+1}, Loss: {avg:.4f}")
+        W.assign_add(0.05 * (tf.transpose(v0)@h0 - tf.transpose(v1)@h1) / 64)
+        vb.assign_add(0.05 * tf.reduce_mean(v0 - v1, 0))
+        hb.assign_add(0.05 * tf.reduce_mean(h0 - h1, 0))
+
+    # Calculate Loss on full data for the graph
+    err = tf.reduce_mean(tf.square(x - tf.sigmoid(tf.sigmoid(x@W+hb) @ tf.transpose(W)+vb)))
+    errors.append(err)
+    print(f"Epoch {i+1}, Loss: {err:.4f}")
 
 # 4. Plot
-plt.plot(range(1, 6), losses, 'o-')
-plt.title("RBM Reconstruction Loss"); plt.xlabel("Epoch"); plt.ylabel("MSE Loss")
-plt.grid(True); plt.show()
+plt.plot(errors, 'o-'); plt.title("RBM Loss"); plt.xlabel("Epoch"); plt.grid(True); plt.show()
