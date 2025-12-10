@@ -1,33 +1,33 @@
-# Program 9: Implement a restricted boltzmann machine (RBM) for learning binary data representations.
+import numpy as np
+import matplotlib.pyplot as plt
 
-import tensorflow as tf, matplotlib.pyplot as plt
+# 1. Setup Data (Random Binary)
+X = np.array([[1,1,0,0,0,0], [0,0,0,1,1,0], [1,1,0,0,0,0], [0,0,1,1,1,0]])
+W = np.random.normal(scale=0.01, size=(6, 2))  # Weights
+bv, bh = np.zeros(6), np.zeros(2)              # Biases
+losses = []
 
-# 1. Data
-(x, _), _ = tf.keras.datasets.mnist.load_data()
-x = (x.reshape(-1, 784) / 255 > 0.5).astype('float32')
+def sigmoid(x): return 1 / (1 + np.exp(-x))
 
-# 2. Variables
-W = tf.Variable(tf.random.normal([784, 128], 0.01))
-hb, vb = tf.Variable(tf.zeros([128])), tf.Variable(tf.zeros([784]))
+# 2. Train RBM (5 Epochs)
+for epoch in range(5):
+    # Positive phase
+    h_prob = sigmoid(np.dot(X, W) + bh)
+    
+    # Reconstruction (Negative phase)
+    v_recon = sigmoid(np.dot(h_prob, W.T) + bv)
+    
+    # Update weights (Contrastive Divergence)
+    W += 0.1 * (np.dot(X.T, h_prob) - np.dot(v_recon.T, sigmoid(np.dot(v_recon, W) + bh)))
+    
+    # Calculate Loss (MSE) and Print
+    loss = np.mean((X - v_recon) ** 2)
+    losses.append(loss)
+    print(f"Epoch {epoch+1}, Loss: {loss:.4f}")
 
-# 3. Train
-errors = []
-for i in range(5):
-    for j in range(0, 60000, 64):
-        v0 = x[j : j+64]
-        h0 = tf.sigmoid(v0 @ W + hb)
-        h0_s = tf.cast(tf.random.uniform([len(v0), 128]) < h0, tf.float32)
-        v1 = tf.sigmoid(h0_s @ tf.transpose(W) + vb)
-        h1 = tf.sigmoid(v1 @ W + hb)
-
-        W.assign_add(0.05 * (tf.transpose(v0)@h0 - tf.transpose(v1)@h1) / 64)
-        vb.assign_add(0.05 * tf.reduce_mean(v0 - v1, 0))
-        hb.assign_add(0.05 * tf.reduce_mean(h0 - h1, 0))
-
-    # Calculate Loss on full data for the graph
-    err = tf.reduce_mean(tf.square(x - tf.sigmoid(tf.sigmoid(x@W+hb) @ tf.transpose(W)+vb)))
-    errors.append(err)
-    print(f"Epoch {i+1}, Loss: {err:.4f}")
-
-# 4. Plot
-plt.plot(errors, 'o-'); plt.title("RBM Loss"); plt.xlabel("Epoch"); plt.grid(True); plt.show()
+# 3. Plot Output
+plt.plot(losses, marker='o')
+plt.title("RBM Loss")
+plt.xlabel("Epoch")
+plt.grid(True)
+plt.show()
